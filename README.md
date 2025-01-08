@@ -116,10 +116,9 @@ For `content` up to 48 bytes in size, a single packet suffices, for more than th
 
 The DMX is a header designed to encode all the information required to build up
 a feed (signed linked list), while avoiding having to explicitly include the
-full `feed_id`, `sequence`, and `prev_message_id` in the message.
+full `feed_id`, `sequence`, and `prev_message_id` in the message. Instead of linking back with these 3 data points, we link back to the *hash* of those. 
 
-TinySSB assumes you have all prior messages, and therefore the DMX of the
-_nextexpected message_ for a particular feed should be known!
+e.g. This means that if you have message 23 for a feed, you will be able to calculate the expected DMX for message 24. When you receive a new packet you can check to see if it matches the DMX for the "next message" in any feed you're tracking.
 
 The DMX is defined as the first 7 bytes of the SHA256 hash of the following
 data concatenated in order:
