@@ -1,10 +1,7 @@
 # tiny-ssb-spec
 
-This document aims to specify
-
-1. Design Decisions
-2. The Tiny SSB Feed
-3. Tiny SSB Peer Interaction
+This document outlines the history + thinking which leads us to this point, as
+well as getting into the details required to implement the specification.
 
 
 ## 1. Design Decisions
