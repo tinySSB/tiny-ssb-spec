@@ -13,7 +13,8 @@ Tiny-SSB was born of the question "Could we make [Secure
 Scuttelbutt](https://github.com/ssbc) (SSB) **tiny** enough to work over
 [LoRa](https://en.wikipedia.org/wiki/LoRa)?"
 
-Core design decisions from SSB that we replicate: - **A.** each device has a unique cryptographic signing key-pair
+Core design decisions we replicate from SSB:
+- **A.** each device has a unique cryptographic signing key-pair
 - **B.** each "message" published by a device is signed by that device's
   cryptographic key
 - **C.** each message has a unique ID which can be derived from it's header +
@@ -21,6 +22,13 @@ Core design decisions from SSB that we replicate: - **A.** each device has a uni
 - **D.** each message published by a device references the msgId of last message
   that device published, such that all messages can be arranged as a linear
   linked-list. This data structure is known as `feed`.
+
+Core design decisons we add for Tiny-SSB:
+- **E.** each message must fit in a LoRa packet
+- **F.** we assume no guarentee of a "connection" with a peer, there is only
+  "broadcast" and "listen"
+- **G.** we support "optional" side-chains off the side of a device's feed.
+
 
 These decisions enable the following properties/ behaviors:
 - **reliable "gossip"**: you can receive news from peerA "via peerB" and
@@ -32,9 +40,12 @@ These decisions enable the following properties/ behaviors:
   to reference feeds public key and the "sequence" (how many messages) to be
   able to coordinate syncing feeds with another peer.
 - **no missed messages**: because of the linked-list structure, you know
-- **unique refs**: all messages have a unique ID. This cannot be guessed ahead of
-  time, which has nice side-effects, such as knowing that all references to
-  messages are "backlinks" (point *backwards* in time).
+- **unique references**: all messages have a unique ID. This cannot be guessed
+  ahead of time, which has nice side-effects, such as knowing that all
+  references to messages are "backlinks" (point *backwards* in time).
+- **new transports**: with LoRa as the benchmark tinySSB can access extremely
+  long-distance (~10km), low energy (solar) communication, as well as
+  pocket-to-pocket communication with Bluetooth Low-energy.
 
 <details>
     <summary>More implications... (click to expand)</summary>
@@ -64,13 +75,6 @@ These decisions enable the following properties/ behaviors:
     - just add another signing key-pair
 
 </details>
-
-Core design decisons we add for Tiny-SSB:
-- **E.** each message must fit in a LoRa packet
-- **F.** we assume no guarentee of a "connection" with a peer, there is only
-  "broadcast" and "listen"
-- **G.** we support "optional" side-chains off the side of a device's feed.
-
 
 
 ## 2. The Tiny SSB Feed
