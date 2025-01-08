@@ -100,22 +100,22 @@ src: https://github.com/ssbc/tinySSB/blob/fee99079ac2820711e1e853cba0e7aacc8765f
 
 A "packet" 120 Bytes of data which consists of the following data concatenated in order:
 
-name                | bytes
---------------------|-------
-`dmx` header        | 7
-`packet_type` code  | 1
-`content`           | 48 (or more if chunked)
-`signature`         | 64
+name          | bytes
+:-------------|:------
+`dmx`         | 7
+`packet_type` | 1
+`content`     | 48 (or more if chunked)
+`signature`   | 64
 
 For `content` up to 48 bytes in size, a single packet suffices, for more than that, see "side-chains" later.
 
 
 
 
-#### DMX header
+#### DMX
 
-The purpose of this header is to encode all the information required to build
-up a feed (signed linked list), while avoiding having to explicitly include the
+The DMX is a header designed to encode all the information required to build up
+a feed (signed linked list), while avoiding having to explicitly include the
 full `feed_id`, `sequence`, and `prev_message_id` in the message.
 
 TinySSB assumes you have all prior messages, and therefore the DMX of the
@@ -125,7 +125,7 @@ The DMX is defined as the first 7 bytes of the SHA256 hash of the following
 data concatenated in order:
 
 name              | details
-------------------|------------
+:-----------------|:-----------
 `dmx_prefix`      | (default: `tinyssb-v0`)
 `feed_id`         | encoded as ???
 `sequence`        | the sequence of this packet in the feeds linked-list
@@ -140,13 +140,13 @@ dmx = sha256(dmx_material).slice(0, 7)
 _where `+` denotes "concatenate"_
 
 
-#### Packet Type code
+#### Packet Type
 
 The `packet_type` code exists to support different types of packets. Currently
 there are only main-chain and side-chain packet types
 
 code | meaning
------|-------------------
+:----|:------------------
 0    | main chain packet
 1    | side chain packet
 
@@ -157,7 +157,7 @@ The Signature is defined as the ed25519 signature of the concatenation of the
 following data in order:
 
 name               | details
--------------------|-------
+:------------------|:------
 `dmx_prefix`       | (default: `tinyssb-v0`)
 `feed_id`          | 32 bytes
 `sequence`         | sequence of this packet in the feeds linked-list
