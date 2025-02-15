@@ -1,4 +1,9 @@
+:warning: DRAFT VERSION!
+
+---
+
 # tiny-ssb-spec
+
 
 This document outlines the history + thinking which leads us to this point, as
 well as getting into the details required to implement the specification.
@@ -15,8 +20,8 @@ Core design decisions we replicate from SSB:
 - **B.** each "message" published by a device is signed by that device's
   cryptographic key
 - **C.** each message has a unique ID which can be derived from it's header +
-  content (`msgId`)
-- **D.** each message published by a device references the msgId of last message
+  content (`msg_id`)
+- **D.** each message published by a device references the msg_id of last message
   that device published, such that all messages can be arranged as a linear
   linked-list. This data structure is known as `feed`.
 
@@ -87,6 +92,92 @@ TODO:
 - ??
 
 
+### Packet / Message
+
+<!--
+src: https://github.com/ssbc/tinySSB/blob/fee99079ac2820711e1e853cba0e7aacc8765fea/android/tinySSB/app/src/main/java/nz/scuttlebutt/tremolavossbol/tssb/Replica.kt#L378-L403
+-->
+
+A "packet" 120 Bytes of data which consists of the following data concatenated in order:
+
+name          | bytes
+:-------------|:------
+`dmx`         | 7
+`packet_type` | 1
+`content`     | 48 (or more if chunked)
+`signature`   | 64
+
+For `content` up to 48 bytes in size, a single packet suffices, for more than that, see "side-chains" later.
+
+
+
+
+#### DMX
+
+The DMX is a header designed to encode all the information required to build up
+a feed (signed linked list), while avoiding having to explicitly include the
+full `feed_id`, `sequence`, and `prev_message_id` in the message. Instead of linking back with these 3 data points, we link back to the *hash* of those. 
+
+e.g. This means that if you have message 23 for a feed, you will be able to calculate the expected DMX for message 24. When you receive a new packet you can check to see if it matches the DMX for the "next message" in any feed you're tracking.
+
+The DMX is defined as the first 7 bytes of the SHA256 hash of the following
+data concatenated in order:
+
+name              | details
+:-----------------|:-----------
+`dmx_prefix`      | (default: `tinyssb-v0`)
+`feed_id`         | encoded as ???
+`sequence`        | the sequence of this packet in the feeds linked-list
+`prev_message_id` | the id of the previous message in this feeds linked-list
+
+
+Pseudo code:
+```
+dmx_material = dmx_prefix + feed_id + sequence + prev_message_id
+dmx = sha256(dmx_material).slice(0, 7)
+```
+_where `+` denotes "concatenate"_
+
+
+#### Packet Type
+
+The `packet_type` code exists to support different types of packets. Currently
+there are only main-chain and side-chain packet types
+
+code | meaning
+:----|:------------------
+0    | main chain packet
+1    | side chain packet
+
+
+#### Signature
+
+The Signature is defined as the ed25519 signature of the concatenation of the
+following data in order:
+
+name               | details
+:------------------|:------
+`dmx_prefix`       | (default: `tinyssb-v0`)
+`feed_id`          | 32 bytes
+`sequence`         | sequence of this packet in the feeds linked-list
+`prev_message_id`  | id of the previous message in this feeds linked-list
+`dmx`              | 7 bytes
+`packet_type` code | 1 bytes
+`content`          | 48 bytes
+
+
+The resulting signature will be 64 Bytes:
+
+Pseudo code:
+```
+signing_material = (
+  dmx_prefix + feed_id + sequence + prev_message_id +
+  dmx + packet_code + content
+)
+signature = sign(signing_material, signing_key)
+```
+_where `+` denotes "concatenate"_
+
 
 ## 3. peer interaction
 
@@ -96,5 +187,11 @@ TODO:
 - broadcasting your state / wants??
 - broadcasting responses??
 - ??
+
+
+## Acknowledgements
+
+TinySSB was originally designed by [Christian
+Tschudin](https://github.com/tschudin) (aka @cft)
 
 
