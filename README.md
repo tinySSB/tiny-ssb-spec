@@ -128,9 +128,6 @@ name              | bytes | details
 `sequence`        | 4     | the sequence of this packet in the feeds linked-list, in big-endian format
 `prev_message_id` | 20    | the id of the previous message in this feeds linked-list
 
-TODO:
-- define encoding of `dmx_prefix`
-- define how `msg_id` is calculated
 
 
 Pseudo code:
