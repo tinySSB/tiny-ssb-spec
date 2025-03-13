@@ -188,6 +188,75 @@ TODO:
 - broadcasting responses??
 - ??
 
+### Wants
+
+Wants packets are ... TODO
+
+A want packet is encoded as the concatenation of:
+
+section   | bytes                | description
+:---------|:---------------------|:------------
+`dmx`     | 7                    | identifies the feeds you're coordinating around
+`payload` | <= 113               | bipf encoded data
+`padding` | 113 - payload.length | topping the packet up to 120 Bytes
+
+```
+  |<----------------120------------------>|
+
+     7             x              113-x
+  +-----+----------------------+----------+
+  | dmx | payload              | padding? |
+  +-----+----------------------+----------+
+```
+
+#### Want `dmx`
+
+`dmx` is the calculated the first 7 Bytes of the sha256 hash of the string
+`"want"` (encoded as :fire: TODO), concatenated with the ordered set of
+`feed_ids` you are coordinating around. 
+
+In pseudocode:
+
+```
+dmx_material = 'want' + feed_1_id + ... + feed_N_id
+dmx = sha256(dmx_material).slice(0, 7)
+```
+
+#### Want `payload`
+
+`payload` is the bipf encoded array/ list where the first entry is an `offset`
+(how far through the goset are you starting) and all subsequent entries are feed
+sequences `feed_j_seq`, `feed_k_seq`, ... etc
+
+In pseudocode:
+```
+payload_content = [offset, feed_j_seq, feed_k_seq...]
+payload = bipf.encode(payload_content)
+```
+
+As an example, suppose you decoded `payload_content`:
+
+```
+[3, 302, 104, 27]
+```
+
+Mapping this against our goset of feed_ids, this tells us:
+
+`offset` | `feed_id` | `feed_seq`
+:--------|:----------|:----------------
+0        | feed_1_id | ??
+1        | feed_2_id | ??
+2        | feed_3_id | ??
+**3** << | feed_4_id | **302**
+4        | feed_5_id | **104**
+5        | feed_5_id | **27**
+...      | ...       | ...
+N-1      | feed_N_id | ??
+
+#### Want `padding`
+
+`padding` is added (as zeros) to until the size of the packet is 120 Bytes
+
 
 ## Acknowledgements
 
