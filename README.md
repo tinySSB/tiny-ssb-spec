@@ -110,8 +110,6 @@ name          | bytes
 For `content` up to 48 bytes in size, a single packet suffices, for more than that, see "side-chains" later.
 
 
-
-
 #### DMX
 
 The DMX is a header designed to encode all the information required to build up
@@ -123,12 +121,16 @@ e.g. This means that if you have message 23 for a feed, you will be able to calc
 The DMX is defined as the first 7 bytes of the SHA256 hash of the following
 data concatenated in order:
 
-name              | details
-:-----------------|:-----------
-`dmx_prefix`      | (default: `tinyssb-v0`)
-`feed_id`         | encoded as ???
-`sequence`        | the sequence of this packet in the feeds linked-list
-`prev_message_id` | the id of the previous message in this feeds linked-list
+name              | bytes | details
+:-----------------|:------|:--------
+`dmx_prefix`      | 10    | prefix for versioning packet formats (default: `tinyssb-v0`) ?? TODO: Encoding?
+`feed_id`         | 32    | ed25519 public key
+`sequence`        | 4     | the sequence of this packet in the feeds linked-list, in big-endian format
+`prev_message_id` | 20    | the id of the previous message in this feeds linked-list
+
+TODO:
+- define encoding of `dmx_prefix`
+- define how `msg_id` is calculated
 
 
 Pseudo code:
@@ -137,6 +139,20 @@ dmx_material = dmx_prefix + feed_id + sequence + prev_message_id
 dmx = sha256(dmx_material).slice(0, 7)
 ```
 _where `+` denotes "concatenate"_
+
+
+#### Msg_id
+
+Pseudo code:
+```
+msg_id_material = dmx_prefix + feed_id + sequence + prev_message_id + dmx +
+                  packet_type + content + signature
+msg_id = sha256(msg_id_material).slice(0, 20)
+```
+
+Notes:
+- is 20 bytes
+- if `sequence` is 0, then `prev_message_id` is all zeros (20 bytes)
 
 
 #### Packet Type
@@ -148,6 +164,29 @@ code | meaning
 :----|:------------------
 0    | main chain packet
 1    | side chain packet
+
+
+#### Content
+
+TODO rename payload?
+
+intro + ptr
+
+- intro:
+    - <= 28: sz_enc + content + fill
+    - > 28: sz_enc + fill
+- ptr: 
+    - <= 28: ??? empty?
+    - > 28: hash of chunks?
+
+
+WARNING: this is actually more complex
+- core chain packets all have similar anatomy
+- side chain blob packets have different anatomy
+    - no DMX
+    - no sig
+    - just `content + hash`
+    - Currently design in flux!
 
 
 #### Signature
@@ -172,7 +211,7 @@ Pseudo code:
 ```
 signing_material = (
   dmx_prefix + feed_id + sequence + prev_message_id +
-  dmx + packet_code + content
+  dmx + packet_type + content
 )
 signature = sign(signing_material, signing_key)
 ```
