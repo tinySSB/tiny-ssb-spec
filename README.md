@@ -100,12 +100,12 @@ src: https://github.com/ssbc/tinySSB/blob/fee99079ac2820711e1e853cba0e7aacc8765f
 
 A "packet" 120 Bytes of data which consists of the following data concatenated in order:
 
-name          | bytes
-:-------------|:------
-`dmx`         | 7
-`packet_type` | 1
-`content`     | 48 (or more if chunked)
-`signature`   | 64
+| name           | bytes                   |
+| :------------- | :------                 |
+| `dmx`          | 7                       |
+| `packet_type`  | 1                       |
+| `content`      | 48 (or more if chunked) |
+| `signature`    | 64                      |
 
 For `content` up to 48 bytes in size, a single packet suffices, for more than that, see "side-chains" later.
 
@@ -121,12 +121,12 @@ e.g. This means that if you have message 23 for a feed, you will be able to calc
 The DMX is defined as the first 7 bytes of the SHA256 hash of the following
 data concatenated in order:
 
-name              | bytes | details
-:-----------------|:------|:--------
-`dmx_prefix`      | 10    | prefix for versioning packet formats (default: `tinyssb-v0`) ?? TODO: Encoding?
-`feed_id`         | 32    | ed25519 public key
-`sequence`        | 4     | the sequence of this packet in the feeds linked-list, in big-endian format
-`prev_message_id` | 20    | the id of the previous message in this feeds linked-list
+| name               | bytes   | details                                                                         |
+| :----------------- | :------ | :--------                                                                       |
+| `dmx_prefix`       | 10      | prefix for versioning packet formats (default: `tinyssb-v0`) ?? TODO: Encoding? |
+| `feed_id`          | 32      | ed25519 public key                                                              |
+| `sequence`         | 4       | the sequence of this packet in the feeds linked-list, in big-endian format      |
+| `prev_message_id`  | 20      | the id of the previous message in this feeds linked-list                        |
 
 
 
@@ -157,10 +157,10 @@ Notes:
 The `packet_type` code exists to support different types of packets. Currently
 there are only main-chain and side-chain packet types
 
-code | meaning
-:----|:------------------
-0    | main chain packet
-1    | side chain packet
+| code  | meaning             |
+| :---- | :------------------ |
+| 0     | main chain packet   |
+| 1     | side chain packet   |
 
 
 #### Content
@@ -191,15 +191,15 @@ WARNING: this is actually more complex
 The Signature is defined as the ed25519 signature of the concatenation of the
 following data in order:
 
-name               | details
-:------------------|:------
-`dmx_prefix`       | (default: `tinyssb-v0`)
-`feed_id`          | 32 bytes
-`sequence`         | sequence of this packet in the feeds linked-list
-`prev_message_id`  | id of the previous message in this feeds linked-list
-`dmx`              | 7 bytes
-`packet_type` code | 1 bytes
-`content`          | 48 bytes
+| name                | details                                              |
+| :------------------ | :------                                              |
+| `dmx_prefix`        | (default: `tinyssb-v0`)                              |
+| `feed_id`           | 32 bytes                                             |
+| `sequence`          | sequence of this packet in the feeds linked-list     |
+| `prev_message_id`   | id of the previous message in this feeds linked-list |
+| `dmx`               | 7 bytes                                              |
+| `packet_type` code  | 1 bytes                                              |
+| `content`           | 48 bytes                                             |
 
 
 The resulting signature will be 64 Bytes:
@@ -230,11 +230,11 @@ Wants packets are ... TODO
 
 A want packet is encoded as the concatenation of:
 
-section   | bytes                | description
-:---------|:---------------------|:------------
-`dmx`     | 7                    | identifies the feeds you're coordinating around
-`payload` | <= 113               | bipf encoded data
-`padding` | 113 - payload.length | topping the packet up to 120 Bytes
+| section   | bytes                | description                                     |
+|:----------|:---------------------|:------------------------------------------------|
+| `dmx`     | 7                    | identifies the feeds you're coordinating around |
+| `payload` | <= 113               | bipf encoded data                               |
+| `padding` | 113 - payload.length | topping the packet up to 120 Bytes              |
 
 ```
   |<----------------120------------------>|
@@ -278,16 +278,16 @@ As an example, suppose you decoded `payload_content`:
 
 Mapping this against our goset of feed_ids, this tells us:
 
-`offset` | `feed_id` | `feed_seq`
-:--------|:----------|:----------------
-0        | feed_1_id | ??
-1        | feed_2_id | ??
-2        | feed_3_id | ??
-**3** << | feed_4_id | **302**
-4        | feed_5_id | **104**
-5        | feed_5_id | **27**
-...      | ...       | ...
-N-1      | feed_N_id | ??
+| `offset`  | `feed_id`   | `feed_seq`        |
+| :-------- | :---------- | :---------------- |
+| 0         | feed_1_id   | ??                |
+| 1         | feed_2_id   | ??                |
+| 2         | feed_3_id   | ??                |
+| **3** <<  | feed_4_id   | **302**           |
+| 4         | feed_5_id   | **104**           |
+| 5         | feed_5_id   | **27**            |
+| ...       | ...         | ...               |
+| N-1       | feed_N_id   | ??                |
 
 #### Want `padding`
 
