@@ -9,14 +9,20 @@ test vectors: ```novelty``` and ```claim```.
 
 We use [s-expressions](https://www.ietf.org/archive/id/draft-rivest-sexp-13.html) for representing constants, data records, sequences and packets.
 
-We denote packet types by the name of its encoding function,
-followed by the resulting byte sequence (test vector) e.g.,
+A packet instance is first written in symbolic form by giving
+the encoding function and its parameters. Separated by ```===```,
+we then show the resulting byte sequence (test vector). Example:
 
 ```
-(NOVELTY_ENCODE #...7_DMX_bytes...# "N" #...32_novelty_bytes...#")
-==
+(NOVELTY_ENCODE #...7_DMX_bytes...#
+                "N"
+                #...32_novelty_bytes...#)
+===
 #....#
 ```
+
+The hex digits of a long byte sequences may wrap at the line end.
+
 
 ## The Two GoSET Packet Types
 
@@ -72,7 +78,7 @@ GoSET_DMX
 ```
 
 
-## Four Scenario:
+## Four Scenarios:
 
 Peer A knows about five feeds:
 ```
@@ -90,6 +96,23 @@ Initially, peer B only knows about its own feed:
 
 ### case a) Peer A sends a ```claim``` about its five feeds (#1 to #5)
 
+```
+(CLAIM_ENCODE #...7_DMX_bytes...#
+              "C"
+              #1000001f4fb57f5d84506379a31c0ab5f24c435c63f2df9b8c373817975eed1f#
+              #0000502302156b0061f1ca08d296d2367cfb40c88c005b73413bc394c4022aca#
+              #??...??#
+              #05#)
+===
+#???#
+```
+
+dmx   7B DMX value for the GoSET protocol (constant value)
+t     1B packet type (fixed to 'C' for a claim)
+f1   32B smallest known FID
+f2   32B highest known FID
+fx   32B XOR of all known FIDs
+cnt   1B number of known FIDs (0..255)
 ...
 
 ### case b) Peer B sends a ```claim``` about its single feed (#6)
