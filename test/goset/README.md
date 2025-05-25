@@ -107,14 +107,6 @@ Initially, peer B only knows about its own feed:
 #???#
 ```
 
-dmx   7B DMX value for the GoSET protocol (constant value)
-t     1B packet type (fixed to 'C' for a claim)
-f1   32B smallest known FID
-f2   32B highest known FID
-fx   32B XOR of all known FIDs
-cnt   1B number of known FIDs (0..255)
-...
-
 ### case b) Peer B sends a ```claim``` about its single feed (#6)
 
 ...
