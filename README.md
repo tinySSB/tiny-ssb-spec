@@ -81,9 +81,9 @@ These decisions enable the following properties/ behaviors:
 
 
 
-## 2. Replication
+## 3. Replication
 
-### 2.1 Goals and Overview
+### 3.1 Goals and Overview
 
 The primary goal of replication in tinySSB is to efficiently coordinate the exchange of messages between peers in a resource-constrained environment, while ensuring that messages are delivered without being modified by peers withing the network. Specifically, tinySSB is designed to work over transports like LoRa, which imposes strict limitations on packet size and bandwidth.
 
@@ -104,15 +104,15 @@ The replication process in tinySSB consists of two main phases:
 
 This specification focuses primarily on the Replication Setup Dance, as it contains the core protocols unique to tinySSB.
 
-### 2.2 GOSET Protocol
+### 3.2 GOSET Protocol
 
-#### 2.2.1 Rationale
+#### 3.2.1 Rationale
 
 In classic SSB, peers used 32-byte public keys (Feed IDs) to identify feeds during replication. However, including these full IDs in every packet would consume too much of the precious 120-byte packet size available in tinySSB.
 
 The GOSET (Grow-Only SET) protocol solves this problem by allowing peers to refer to feeds by their index in a shared, lexicographically sorted set of Feed IDs. Once peers have synchronized their GOSETs, they can use these compact indices instead of full 32-byte IDs in subsequent communication.
 
-#### 2.2.2 GOSET Structure
+#### 3.2.2 GOSET Structure
 
 A GOSET is a lexicographically sorted set of Feed IDs (32-byte public keys). The sorting ensures that all peers who have the same set will have the same ordering, allowing consistent indexing.
 
@@ -122,7 +122,7 @@ Properties of a GOSET:
 - All feeds in the set are sorted lexicographically
 - Each feed can be referenced by its index (0-254) in the sorted set
 
-#### 2.2.3 CLAIM Packet Format
+#### 3.2.3 CLAIM Packet Format
 
 The GOSET protocol uses CLAIM packets to synchronize the set of Feed IDs between peers. A CLAIM packet describes a region of the lexicographically sorted GOSET.
 
@@ -147,11 +147,11 @@ Where:
 
 The total length of a CLAIM packet is 103 bytes, which fits within the 120-byte limit.
 
-### 2.3 GOSET Synchronization Process
+### 3.3 GOSET Synchronization Process
 
 The GOSET synchronization process allows peers to identify and share missing Feed IDs. It works through a series of CLAIM packet that progressively narrow down regions where peers have different sets.
 
-#### 2.3.1 Basic Process
+#### 3.3.1 Basic Process
 
 1. A peer broadcasts a CLAIM packet covering its entire GOSET
 2. If another peer has a different set of Feed IDs in that region (detected by comparing the XOR and count), it responds with its own CLAIM for the same region
@@ -172,14 +172,14 @@ sequenceDiagram
     Note over A,B: Repeat till CLAIMs align...
 ```
 
-#### 2.3.2 Detecting Differences
+#### 3.3.2 Detecting Differences
 
 Peers detect differences in their GOSETs by comparing the `XOR`-sum and `count` of Feed IDs in a region. Before comparing these values, however, a peer adds the CLAIM's first and last Feed IDs to its own set in case they are not already present.
 
 1. If the `count`s matchs but the `XOR`-sums differ, there must be different Feed IDs in the region
 2. If the `count`s differ, there are either missing or extra Feed IDs in the region
 
-#### 2.3.3 Pseudo-code for GOSET Synchronization
+#### 3.3.3 Pseudo-code for GOSET Synchronization
 
 ```
 function handleClaimPacket(claim):
@@ -213,16 +213,16 @@ function handleClaimPacket(claim):
         sendClaimForRegion(subRegion2)
 ```
 
-### 2.4 WANT Packet Protocol
+### 3.4 WANT Packet Protocol
 
-#### 2.4.1 Purpose
+#### 3.4.1 Purpose
 
 Once peers have synchronized their GOSETs, they use WANT packets to:
 1. Announce which feed sequences they already have
 2. Request updates for feeds they're interested in
 3. Listen for new messages on feeds they're following
 
-#### 2.4.2 WANT Packet DMX
+#### 3.4.2 WANT Packet DMX
 
 The DMX (DeMultipleX) field in a WANT vector is dynamically calculated based on the current GOSET state. This ensures that WANT packets are only processed by peers who share the same GOSET state, which is necessary for the index-based feed references to work correctly.
 
@@ -243,7 +243,7 @@ This dynamic DMX calculation is crucial because:
 2. It allows peers to quickly determine if they share the same GOSET
 3. It prevents misinterpretation of feed indices when GOSETs differ
 
-#### 2.4.3 WANT Packet Format
+#### 3.4.3 WANT Packet Format
 
 A WANT vector packet has the following structure:
 
@@ -260,7 +260,7 @@ Where:
 - `payload`: BIPF-encoded array containing offset and sequence numbers
 - `padding`: Zeros added to bring the packet size up to 120 bytes
 
-#### 2.4.4 WANT Packet Payload
+#### 3.4.4 WANT Packet Payload
 
 The payload of a WANT vector is a BIPF-encoded array with the following structure:
 
@@ -280,7 +280,7 @@ For example, a decoded payload of `[3, 302, 104, 27]` would mean:
 
 This compact representation allows a peer to express wants for multiple feeds without including the full 32-byte Feed IDs.
 
-### 2.5 Replication Process Overview
+### 3.5 Replication Process Overview
 
 The complete replication process in tinySSB follows these steps:
 
@@ -314,29 +314,29 @@ sequenceDiagram
 
 The actual packet formats and exchange processes for feed messages will be covered in later sections of this specification.
 
-### 2.6 Limitations and Considerations
+### 3.6 Limitations and Considerations
 
-#### 2.6.1 GOSET Size Limitation
+#### 3.6.1 GOSET Size Limitation
 
 The current implementation limits the GOSET to 255 feeds (as the count field is a single byte). This may be a constraint for larger networks or applications with many users.
 
-#### 2.6.2 Spam Resistance
+#### 3.6.2 Spam Resistance
 
 The GOSET protocol does not inherently protect against spam. A malicious peer could potentially flood the network with many different Feed IDs, causing the GOSET to grow unnecessarily large. Application-level filtering or trust mechanisms may be needed to mitigate this.
 
-#### 2.6.3 Partition Tolerance
+#### 3.6.3 Partition Tolerance
 
 tinySSB is designed to be highly partition-tolerant. Peers can continue to operate independently when disconnected and will automatically synchronize when connectivity is restored. The GOSET protocol ensures that peers can efficiently determine what they're missing after a partition.
 
-#### 2.6.4 Eventual Consistency
+#### 3.6.4 Eventual Consistency
 
 The replication process guarantees eventual consistency: given sufficient connectivity over time, all peers will eventually have the same view of all feeds they're interested in. However, there are no real-time guarantees, and different peers may have different views of the network at any given moment.
 
 
 
-## 3. Feeds
+## 4. Feeds
 
-### 3.1 Feed Structure and Concepts
+### 4.1 Feed Structure and Concepts
 
 A feed in tinySSB is an append-only log of signed messages created by a single
 device. Each feed is identified by a unique cryptographic signing key-pair, with
@@ -389,14 +389,14 @@ This linked structure ensures that:
 2. We can succinctly communicate how many messages from a feed with have (the
 sequence)
 
-### 3.2 DMX Header Mechanism
+### 4.2 DMX Header Mechanism
 
 The DMX (DeMultipleX) header is a critical innovation in tinySSB that allows for
 efficient packet identification without requiring the full feed ID, sequence
 number, and previous message ID to be included in each packet. This saves
 valuable space in the constrained 120-byte packet size.
 
-#### 3.2.1 Purpose of DMX
+#### 4.2.1 Purpose of DMX
 
 The DMX header serves multiple purposes:
 
@@ -407,7 +407,7 @@ next message in a feed
 3. **Efficient filtering**: Enables quick determination of whether a received
 packet belongs to a feed of interest
 
-#### 3.2.2 DMX Calculation
+#### 4.2.2 DMX Calculation
 
 The DMX is defined as the first 7 bytes of the SHA256 hash of the following data
 concatenated in order:
@@ -425,7 +425,7 @@ dmx = sha256(dmx_material).slice(0, 7)
 ```
 Where `+` denotes concatenation.
 
-#### 3.2.3 DMX Usage
+#### 4.2.3 DMX Usage
 
 When a peer has message N of a feed, it can calculate the expected DMX for
 message N+1. When receiving broadcast packets, the peer can quickly check if any
@@ -435,7 +435,7 @@ interest.
 This mechanism is particularly valuable in broadcast-only environments where
 peers need to efficiently filter relevant packets from the broadcast medium.
 
-#### 3.2.4 Message ID Calculation
+#### 4.2.4 Message ID Calculation
 
 Each message in a feed has a unique message ID (`msg_id`) that is used for
 referencing in subsequent messages. The `msg_id` is calculated as:
@@ -450,15 +450,15 @@ Important notes:
 - The `msg_id` is 20 bytes long
 - For the first message in a feed (`sequence` = 1), the `prev_message_id` is all
 zeros (20 bytes)
-- `message_type` is described in section 3.3
+- `message_type` is described in section 4.3
 
-### 3.3 Main Chain Packet Format
+### 4.3 Main Chain Packet Format
 
 All main chain packets in tinySSB share a common structure, regardless of their
 specific type. This consistent format ensures that packets can be properly
 identified, verified, and processed.
 
-#### 3.3.1 General Packet Structure
+#### 4.3.1 General Packet Structure
 
 A main chain packet consists of the following components concatenated in order:
 
@@ -472,14 +472,14 @@ A main chain packet consists of the following components concatenated in order:
 ```
 
 Where:
-- **DMX**: 7-byte header calculated as described in section 3.2
+- **DMX**: 7-byte header calculated as described in section 4.2
 - **Message Type**: 1-byte type identifier
 - **Content**: 48 bytes of payload data (format depends on packet type)
 - **Signature**: 64-byte ed25519 signature
 
 The total size of a main chain packet is exactly 120 bytes, which is the maximum size allowed by the LoRa transport.
 
-#### 3.3.2 Signature Generation
+#### 4.3.2 Signature Generation
 
 The signature is an ed25519 signature of the concatenation of the following data:
 
@@ -499,7 +499,7 @@ signing_material = dmx_prefix + feed_id + sequence + prev_message_id +
 signature = sign(signing_material, signing_key)
 ```
 
-#### 3.3.3 Message Type Byte
+#### 4.3.3 Message Type Byte
 
 The packet type byte determines how the content field should be interpreted:
 
@@ -510,11 +510,11 @@ The packet type byte determines how the content field should be interpreted:
 
 Additional packet types may be defined in future versions of the protocol.
 
-See Section 4 for more information about each type.
+See Section 5 for more information about each type.
 
-### 3.4 Feed Limitations and Considerations
+### 4.4 Feed Limitations and Considerations
 
-#### 3.4.1 Security Considerations
+#### 4.4.1 Security Considerations
 
 1. **Key management**: Loss of a feed's private key means permanent loss of the
 ability to publish to that feed
@@ -523,29 +523,29 @@ network
 3. **Feed forking**: If the same private key is used on multiple devices, feed
 forking can occur, breaking the linear structure
 
-#### 3.4.2 Performance Considerations
+#### 4.4.2 Performance Considerations
 
 1. **DMX calculation overhead**: Computing and verifying DMX headers requires
 cryptographic hash operations
 2. **Feed synchronization**: Peers must exchange WANT packets to coordinate
 which messages they need
 
-#### 3.4.3 Future Improvements
+#### 4.4.3 Future Improvements
 
 1. **Partial replication**: Allow peers to replicate only portions of feeds
 they're interested in
 2. **Feed compaction**: Mechanisms to summarize or compact old feed entries
 
-## 4. Message Types
+## 5. Message Types
 
-### 4.1. Type 0 - Fixed Size Messages
+### 5.1 Type 0 - Fixed Size Messages
 
 Type 0 messages are the simplest form of tinySSB messages, designed for content
 that fits **exactly** in the 48-byte content field of a main chain packet. These
-messages follow the standard main chain packet format described in section 3.3,
+messages follow the standard main chain packet format described in section 4.3,
 with specific rules for the content field.
 
-#### 4.1.1 Purpose and Use Cases
+#### 5.1.1 Purpose and Use Cases
 
 Type 0 messages are ideal for:
 - Short text messages
@@ -554,7 +554,7 @@ Type 0 messages are ideal for:
 - Control commands
 - References to external data
 
-#### 4.1.2 Detailed Packet Structure
+#### 5.1.2 Detailed Packet Structure
 
 ```
   |<------------------------------ 120 bytes ---------------------------->|
@@ -565,7 +565,7 @@ Type 0 messages are ideal for:
   └──────────┴─────────────┴───────────────────────┴──────────────────────┘
 ```
 
-#### 4.1.3 Content Format
+#### 5.1.3 Content Format
 
 The 48-byte content field in Type 0 messages typically contains BIPF-encoded
 data. BIPF (Binary In-Place Format) is a compact binary encoding format similar
@@ -604,7 +604,7 @@ If the encoded content is less than 48 bytes, it is padded with zeros to fill th
 </details>
 
 
-#### 4.1.4 Processing and Verification
+#### 5.1.4 Processing and Verification
 
 When a peer receives a Type 0 message, it:
 
@@ -619,7 +619,7 @@ to listen for its arrival
 
 ---
 
-### 4.2 Type 1 - Variable Sized Messages
+### 5.2 Type 1 - Variable Sized Messages
 
 Type 1 messages are designed for content that may exceed the 48-byte limit of a
 main chain packet. They use a special format for the content field that may
@@ -662,13 +662,13 @@ include a pointer to side chain packets containing additional data.
 
 ```
 
-#### 4.2.1 Purpose and When to Use
+#### 5.2.1 Purpose and When to Use
 
 Type 1 messages should be used when:
 - The content exceeds 48 bytes
 - The content is less than 48 bytes (and you don't want to pad)
 
-#### 4.2.2 Detailed Packet Structure
+#### 5.2.2 Detailed Packet Structure
 
 ```
   |<------------------------------ 120 bytes ---------------------------->|
@@ -696,7 +696,7 @@ Where:
 - **Content Data**: Either the first chunk of the full content data, or the whole content
 - **Pointer/Padding**: Either a 20-byte hash pointer to side chain packets or padding
 
-#### 4.2.3 Content Scenarios
+#### 5.2.3 Content Scenarios
 
 There are two scenarios for Type 1 message content:
 
@@ -717,7 +717,7 @@ There are two scenarios for Type 1 message content:
    20-byte hash pointer to the first side chain packet.
 
 
-#### 4.2.4 Side Chain Packet Format
+#### 5.2.4 Side Chain Packet Format
 
 Side chain packets are used to store content that doesn't fit in a main chain
 packet. They have a simpler structure than main chain packets, as they don't
@@ -744,7 +744,7 @@ Side chain packets do not include a DMX header or signature, as they are
 referenced and implicitly authenticated by the hash chain starting from the main
 chain packet.
 
-#### 4.2.5 Side Chain Construction
+#### 5.2.5 Side Chain Construction
 
 Side chains are constructed in reverse order, starting from the last packet:
 
@@ -779,7 +779,7 @@ This construction ensures that:
 2. Side chain packets can be identified and linked correctly
 3. The end of the side chain can be detected
 
-#### 4.2.6 CHNK Packet Protocol
+#### 5.2.6 CHNK Packet Protocol
 
 The CHNK Packet protocol is used to coordinate the replication of side chain
 packets between peers. It is similar to the WANT vector protocol used for main
