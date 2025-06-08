@@ -82,10 +82,10 @@ These decisions enable the following properties/ behaviors:
 
 ### 2.1 Goals and Overview
 
-The primary goal of replication in tinySSB is to efficiently coordinate the exchange of messages between peers in a resource-constrained environment. Specifically, tinySSB is designed to work over transports like LoRa, which imposes strict limitations on packet size and bandwidth.
+The primary goal of replication in tinySSB is to efficiently coordinate the exchange of messages between peers in a resource-constrained environment, while ensuring that messages are delivered without being modified by peers withing the network. Specifically, tinySSB is designed to work over transports like LoRa, which imposes strict limitations on packet size and bandwidth.
 
 Key constraints that shape the replication protocol:
-- **Packet size limitation**: All packets must fit within 120 bytes (LoRa constraint)
+- **Packet size limitation**: All packets must fit within 120 bytes (LoRa has constraints which depend on spread-factors, regional-specific considerations. 120 was chosen as a compromise that maximises payload, will still work with Bluetooth Low Energy, and reliability - too large and more prone to errors)
 - **Broadcast-only communication**: We assume no guarantee of a "connection" with a peer; there is only "broadcast" and "listen"
 - **Limited bandwidth**: Minimizing redundant message transmission is critical
 
@@ -171,7 +171,7 @@ sequenceDiagram
 
 #### 2.3.2 Detecting Differences
 
-Peers detect differences in their GOSETs by comparing the `XOR`-sum and `count` of Feed IDs in a region:
+Peers detect differences in their GOSETs by comparing the `XOR`-sum and `count` of Feed IDs in a region. Before comparing these values, however, a peer adds the CLAIM's first and last Feed IDs to its own set in case they are not already present.
 
 1. If the `count`s matchs but the `XOR`-sums differ, there must be different Feed IDs in the region
 2. If the `count`s differ, there are either missing or extra Feed IDs in the region
@@ -180,6 +180,11 @@ Peers detect differences in their GOSETs by comparing the `XOR`-sum and `count` 
 
 ```
 function handleClaimPacket(claim):
+    if claim.lowestFID not in localFIDs
+        addToGOSET(claim.lowestFID)
+    if claim.highestFID not in localFIDs
+        addToGOSET(claim.highestFID)
+
     region = (claim.lowestFID, claim.highestFID)
     localFIDs = getLocalFIDsInRegion(region)
     
@@ -190,12 +195,6 @@ function handleClaimPacket(claim):
         // Our GOSET matches for this region
         return
     
-    if region contains only one FID:
-        // We found a specific difference
-        if claim.cnt == 1 and localCount == 0:
-            // We're missing this FID
-            addToGOSET(claim.lowestFID)
-        return
     
     // Our GOSET differs in this region
     // Send our claim for the same region
@@ -461,7 +460,7 @@ identified, verified, and processed.
 A main chain packet consists of the following components concatenated in order:
 
 ```
-  |<-------------------------- 120 bytes max ---------------------------->|
+  |<---------------------------- 120 bytes ------------------------------>|
 
   ┌──────────┬─────────────┬───────────────────────┬──────────────────────┐
   │ DMX      │ Message Type│ Content               │ Signature            │
@@ -700,7 +699,8 @@ The content field has a special structure:
 ```
 
 Where:
-- **VL**: Variable-length encoded size of the total content
+- **VL**: The length of the raw content is encoded in the VL field, whose length is variable, depending on the content length to encode. Specifically, tinySSB uses the `VARINT` format of [protobuf](https://protobuf.dev/programming-guides/encoding/#varints), where the encoding is defined as follows:
+  > Each byte in a varint, except the last byte, has the most significant bit (msb) set – this indicates that there are further bytes to come. The lower 7 bits of each byte are used to store the two's complement representation of the number in groups of 7 bits, least significant group first.
 - **Content Data**: Either the first chunk of the full content data, or the whole content
 - **Pointer/Padding**: Either a 20-byte hash pointer to side chain packets or padding
 
