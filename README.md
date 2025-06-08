@@ -8,7 +8,6 @@
 This document outlines the history + thinking which leads us to this point, as
 well as getting into the details required to implement the specification.
 
-
 ## 1. Design Decisions
 
 Tiny-SSB was born of the question "Could we make [Secure
@@ -77,6 +76,10 @@ These decisions enable the following properties/ behaviors:
     - just add another signing key-pair
 
 </details>
+
+## 2. High-level Overview
+
+
 
 ## 2. Replication
 
