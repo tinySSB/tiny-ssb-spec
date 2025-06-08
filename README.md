@@ -248,7 +248,10 @@ function handleClaimPacket(claim):
 Once peers have synchronized their GOSETs, they use WANT packets to:
 1. Announce which feed sequences they already have
 2. Request updates for feeds they're interested in
-3. Listen for new messages on feeds they're following
+
+Currently, the WANT protocol does not permit to express that a peer has some feed sequences
+available but the peer is not interested in getting subsequent log entries. This reflects the
+assumption that all append-only logs remain extensible forever (there is no "close" log entry).
 
 #### 3.4.2 WANT Packet DMX
 
