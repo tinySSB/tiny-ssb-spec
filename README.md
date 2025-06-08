@@ -912,3 +912,9 @@ sequenceDiagram
 
 This protocol ensures efficient replication of large messages across the network
 while maintaining the 120-byte packet size constraint.
+
+## 6. Acknowledgements
+
+TinySSB was originally designed by [Christian Tschudin](https://github.com/tschudin) (aka @cft).
+This specification was the work of [@cft](https://github.com/tschudin), [@mixmix](https://mixmix.nz), [@nanomonkey](https://github.com/nanomonkey)
+
