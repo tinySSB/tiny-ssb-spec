@@ -70,7 +70,7 @@ These decisions enable the following properties/ behaviors:
       such that people can @-mention, or DM with just one ID, but this is
       currently not possible 
     - you cannot use the same keys on 2 devices safely: if they both publish
-      then you can break the "linear linked-list" expectaction of your feed and
+      then you can break the "linear linked-list" expectation of your feed and
       you break replication
 - multiple identities per device is easy
     - just add another signing key-pair
@@ -85,11 +85,19 @@ These decisions enable the following properties/ behaviors:
 
 ### 3.1 Goals and Overview
 
-The primary goal of replication in tinySSB is to efficiently coordinate the exchange of messages between peers in a resource-constrained environment, while ensuring that messages are delivered without being modified by peers withing the network. Specifically, tinySSB is designed to work over transports like LoRa, which imposes strict limitations on packet size and bandwidth.
+The primary goal of replication in tinySSB is to efficiently coordinate the
+exchange of messages between peers in a resource-constrained environment, while
+ensuring that messages are delivered without being modified by peers within the
+network. Specifically, tinySSB is designed to work over transports like LoRa,
+which imposes strict limitations on packet size and bandwidth.
 
 Key constraints that shape the replication protocol:
-- **Packet size limitation**: All packets must fit within 120 bytes (LoRa has constraints which depend on spread-factors, regional-specific considerations. 120 was chosen as a compromise that maximises payload, will still work with Bluetooth Low Energy, and reliability - too large and more prone to errors)
-- **Broadcast-only communication**: We assume no guarantee of a "connection" with a peer; there is only "broadcast" and "listen"
+- **Packet size limitation**: All packets must fit within 120 bytes (LoRa has
+constraints which depend on spread-factors, regional-specific considerations.
+120 was chosen as a compromise that maximises payload, will still work with
+Bluetooth Low Energy, and reliability - too large and more prone to errors)
+- **Broadcast-only communication**: We assume no guarantee of a "connection"
+with a peer; there is only "broadcast" and "listen"
 - **Limited bandwidth**: Minimizing redundant message transmission is critical
 
 The replication process in tinySSB consists of two main phases:
@@ -102,19 +110,27 @@ The replication process in tinySSB consists of two main phases:
    - Sending messages in response to expressed wants
    - Processing and verifying received messages
 
-This specification focuses primarily on the Replication Setup Dance, as it contains the core protocols unique to tinySSB.
+This specification focuses primarily on the Replication Setup Dance, as it
+contains the core protocols unique to tinySSB.
 
 ### 3.2 GOSET Protocol
 
 #### 3.2.1 Rationale
 
-In classic SSB, peers used 32-byte public keys (Feed IDs) to identify feeds during replication. However, including these full IDs in every packet would consume too much of the precious 120-byte packet size available in tinySSB.
+In classic SSB, peers used 32-byte public keys (Feed IDs) to identify feeds
+during replication. However, including these full IDs in every packet would
+consume too much of the precious 120-byte packet size available in tinySSB.
 
-The GOSET (Grow-Only SET) protocol solves this problem by allowing peers to refer to feeds by their index in a shared, lexicographically sorted set of Feed IDs. Once peers have synchronized their GOSETs, they can use these compact indices instead of full 32-byte IDs in subsequent communication.
+The GOSET (Grow-Only SET) protocol solves this problem by allowing peers to
+refer to feeds by their index in a shared, lexicographically sorted set of Feed
+IDs. Once peers have synchronized their GOSETs, they can use these compact
+indices instead of full 32-byte IDs in subsequent communication.
 
 #### 3.2.2 GOSET Structure
 
-A GOSET is a lexicographically sorted set of Feed IDs (32-byte public keys). The sorting ensures that all peers who have the same set will have the same ordering, allowing consistent indexing.
+A GOSET is a lexicographically sorted set of Feed IDs (32-byte public keys). The
+sorting ensures that all peers who have the same set will have the same
+ordering, allowing consistent indexing.
 
 Properties of a GOSET:
 - It can only grow (feeds can be added but not removed)
@@ -124,7 +140,8 @@ Properties of a GOSET:
 
 #### 3.2.3 CLAIM Packet Format
 
-The GOSET protocol uses CLAIM packets to synchronize the set of Feed IDs between peers. A CLAIM packet describes a region of the lexicographically sorted GOSET.
+The GOSET protocol uses CLAIM packets to synchronize the set of Feed IDs between
+peers. A CLAIM packet describes a region of the lexicographically sorted GOSET.
 
 A CLAIM packet has the following structure:
 
@@ -149,15 +166,21 @@ The total length of a CLAIM packet is 103 bytes, which fits within the 120-byte 
 
 ### 3.3 GOSET Synchronization Process
 
-The GOSET synchronization process allows peers to identify and share missing Feed IDs. It works through a series of CLAIM packet that progressively narrow down regions where peers have different sets.
+The GOSET synchronization process allows peers to identify and share missing
+Feed IDs. It works through a series of CLAIM packet that progressively narrow
+down regions where peers have different sets.
 
 #### 3.3.1 Basic Process
 
 1. A peer broadcasts a CLAIM packet covering its entire GOSET
-2. If another peer has a different set of Feed IDs in that region (detected by comparing the XOR and count), it responds with its own CLAIM for the same region
+2. If another peer has a different set of Feed IDs in that region (detected by
+   comparing the XOR and count), it responds with its own CLAIM for the same
+region
 3. Once a peer identifies a missing Feed ID, it adds it to its GOSET
-4. The first peer then splits the region into two sub-regions and sends CLAIM packets for each
-5. This process continues recursively, narrowing down to the specific Feed IDs that differ
+4. The first peer then splits the region into two sub-regions and sends CLAIM
+   packets for each
+5. This process continues recursively, narrowing down to the specific Feed IDs
+   that differ
 
 ```mermaid
 sequenceDiagram
@@ -174,10 +197,15 @@ sequenceDiagram
 
 #### 3.3.2 Detecting Differences
 
-Peers detect differences in their GOSETs by comparing the `XOR`-sum and `count` of Feed IDs in a region. Before comparing these values, however, a peer adds the CLAIM's first and last Feed IDs to its own set in case they are not already present.
+Peers detect differences in their GOSETs by comparing the `XOR`-sum and `count`
+of Feed IDs in a region. Before comparing these values, however, a peer adds the
+CLAIM's first and last Feed IDs to its own set in case they are not already
+present.
 
-1. If the `count`s matchs but the `XOR`-sums differ, there must be different Feed IDs in the region
-2. If the `count`s differ, there are either missing or extra Feed IDs in the region
+1. If the `count`s matchs but the `XOR`-sums differ, there must be different
+   Feed IDs in the region
+2. If the `count`s differ, there are either missing or extra Feed IDs in the
+   region
 
 #### 3.3.3 Pseudo-code for GOSET Synchronization
 
@@ -224,7 +252,10 @@ Once peers have synchronized their GOSETs, they use WANT packets to:
 
 #### 3.4.2 WANT Packet DMX
 
-The DMX (DeMultipleX) field in a WANT vector is dynamically calculated based on the current GOSET state. This ensures that WANT packets are only processed by peers who share the same GOSET state, which is necessary for the index-based feed references to work correctly.
+The DMX (DeMultipleX) field in a WANT vector is dynamically calculated based on
+the current GOSET state. This ensures that WANT packets are only processed by
+peers who share the same GOSET state, which is necessary for the index-based
+feed references to work correctly.
 
 The WANT `DMX` is calculated as follows:
 
@@ -278,7 +309,8 @@ For example, a decoded payload of `[3, 302, 104, 27]` would mean:
 - I have up to sequence 104 for the feed at index 4
 - I have up to sequence 27 for the feed at index 5
 
-This compact representation allows a peer to express wants for multiple feeds without including the full 32-byte Feed IDs.
+This compact representation allows a peer to express wants for multiple feeds
+without including the full 32-byte Feed IDs.
 
 ### 3.5 Replication Process Overview
 
@@ -312,25 +344,37 @@ sequenceDiagram
     Note over A,B: Process repeats until sync complete
 ```
 
-The actual packet formats and exchange processes for feed messages will be covered in later sections of this specification.
+The actual packet formats and exchange processes for feed messages will be
+covered in later sections of this specification.
 
 ### 3.6 Limitations and Considerations
 
 #### 3.6.1 GOSET Size Limitation
 
-The current implementation limits the GOSET to 255 feeds (as the count field is a single byte). This may be a constraint for larger networks or applications with many users.
+The current implementation limits the GOSET to 255 feeds (as the count field is
+a single byte). This may be a constraint for larger networks or applications
+with many users.
 
 #### 3.6.2 Spam Resistance
 
-The GOSET protocol does not inherently protect against spam. A malicious peer could potentially flood the network with many different Feed IDs, causing the GOSET to grow unnecessarily large. Application-level filtering or trust mechanisms may be needed to mitigate this.
+The GOSET protocol does not inherently protect against spam. A malicious peer
+could potentially flood the network with many different Feed IDs, causing the
+GOSET to grow unnecessarily large. Application-level filtering or trust
+mechanisms may be needed to mitigate this.
 
 #### 3.6.3 Partition Tolerance
 
-tinySSB is designed to be highly partition-tolerant. Peers can continue to operate independently when disconnected and will automatically synchronize when connectivity is restored. The GOSET protocol ensures that peers can efficiently determine what they're missing after a partition.
+tinySSB is designed to be highly partition-tolerant. Peers can continue to
+operate independently when disconnected and will automatically synchronize when
+connectivity is restored. The GOSET protocol ensures that peers can efficiently
+determine what they're missing after a partition.
 
 #### 3.6.4 Eventual Consistency
 
-The replication process guarantees eventual consistency: given sufficient connectivity over time, all peers will eventually have the same view of all feeds they're interested in. However, there are no real-time guarantees, and different peers may have different views of the network at any given moment.
+The replication process guarantees eventual consistency: given sufficient
+connectivity over time, all peers will eventually have the same view of all
+feeds they're interested in. However, there are no real-time guarantees, and
+different peers may have different views of the network at any given moment.
 
 
 
@@ -477,7 +521,8 @@ Where:
 - **Content**: 48 bytes of payload data (format depends on packet type)
 - **Signature**: 64-byte ed25519 signature
 
-The total size of a main chain packet is exactly 120 bytes, which is the maximum size allowed by the LoRa transport.
+The total size of a main chain packet is exactly 120 bytes, which is the maximum
+size allowed by the LoRa transport.
 
 #### 4.3.2 Signature Generation
 
@@ -691,8 +736,15 @@ The content field has a special structure:
 ```
 
 Where:
-- **VL**: The length of the raw content is encoded in the VL field, whose length is variable, depending on the content length to encode. Specifically, tinySSB uses the `VARINT` format of [protobuf](https://protobuf.dev/programming-guides/encoding/#varints), where the encoding is defined as follows:
-  > Each byte in a varint, except the last byte, has the most significant bit (msb) set – this indicates that there are further bytes to come. The lower 7 bits of each byte are used to store the two's complement representation of the number in groups of 7 bits, least significant group first.
+- **VL**: The length of the raw content is encoded in the VL field, whose length
+  is variable, depending on the content length to encode. Specifically, tinySSB
+  uses the `VARINT` format of
+  [protobuf](https://protobuf.dev/programming-guides/encoding/#varints), where
+  the encoding is defined as follows:
+  > Each byte in a varint, except the last byte, has the most significant bit
+  > (msb) set – this indicates that there are further bytes to come. The lower 7
+  > bits of each byte are used to store the two's complement representation of
+  > the number in groups of 7 bits, least significant group first.
 - **Content Data**: Either the first chunk of the full content data, or the whole content
 - **Pointer/Padding**: Either a 20-byte hash pointer to side chain packets or padding
 
@@ -736,9 +788,10 @@ through the hash chain).
 ```
 
 Where:
-- **Content**: 100 bytes of content data, or up to 100 of content data padded up to 100 bytes for the last packet
+- **Content**: 100 bytes of content data, or up to 100 of content data padded up
+  to 100 bytes for the last packet
 - **Pointer Hash**: 20-byte SHA256 hash of the next side chain packet, or all
-zeros for the last packet
+  zeros for the last packet
 
 Side chain packets do not include a DMX header or signature, as they are
 referenced and implicitly authenticated by the hash chain starting from the main
@@ -752,7 +805,8 @@ Side chains are constructed in reverse order, starting from the last packet:
 2. The remaining content is divided into chunks of 100 bytes each
 3. The last fragment is padded to 100 bytes and appended with 20 zero bytes
 4. The SHA256 hash of this last packet is calculated
-5. The second-to-last fragment is appended with this hash to form the second-to-last packet
+5. The second-to-last fragment is appended with this hash to form the
+   second-to-last packet
 6. This process continues until all fragments are processed
 7. The hash of the first side chain packet is included in the main chain packet
 
