@@ -511,18 +511,7 @@ See Section 4 for more information about each type.
 
 ### 3.4 Feed Limitations and Considerations
 
-#### 3.4.1 Size Constraints
-
-The 120-byte packet size limitation imposes several constraints on tinySSB feeds:
-
-1. **Content size**: Main chain packets can only contain up to 48 bytes of content
-2. **Message overhead**: The DMX, packet type, and signature consume 72 bytes of
-each packet
-
-These constraints make tinySSB most suitable for applications that primarily
-exchange small text messages or sensor data.
-
-#### 3.4.2 Security Considerations
+#### 3.4.1 Security Considerations
 
 1. **Key management**: Loss of a feed's private key means permanent loss of the
 ability to publish to that feed
@@ -531,14 +520,14 @@ network
 3. **Feed forking**: If the same private key is used on multiple devices, feed
 forking can occur, breaking the linear structure
 
-#### 3.4.3 Performance Considerations
+#### 3.4.2 Performance Considerations
 
 1. **DMX calculation overhead**: Computing and verifying DMX headers requires
 cryptographic hash operations
 2. **Feed synchronization**: Peers must exchange WANT packets to coordinate
 which messages they need
 
-#### 3.4.4 Future Improvements
+#### 3.4.3 Future Improvements
 
 1. **Partial replication**: Allow peers to replicate only portions of feeds
 they're interested in
