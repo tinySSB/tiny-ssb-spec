@@ -14,22 +14,24 @@ Tiny-SSB was born of the question "Could we make [Secure
 Scuttelbutt](https://github.com/ssbc) (SSB) **tiny** enough to work over
 [LoRa](https://en.wikipedia.org/wiki/LoRa)?"
 
-Core design decisions we replicate from SSB:
-- **A.** each device has a unique cryptographic signing key-pair
+Core design decisions we copy from SSB:
+- **A.** each device has a unique cryptographic key-pair for signing and encryption
 - **B.** each "message" published by a device is signed by that device's
   cryptographic key
 - **C.** each message has a unique ID which can be derived from it's header +
   content (`msg_id`)
 - **D.** each message published by a device references the msg_id of last message
   that device published, such that all messages can be arranged as a linear
-  linked-list. This data structure is known as `feed`.
+  linked-list. This data structure is known as `feed` and is some-times
+  referred to as 'main-chain' in this document.
 
-Core design decisons we add for Tiny-SSB:
-- **E.** each message must fit in a LoRa packet
-- **F.** we assume no guarentee of a "connection" with a peer, there is only
-  "broadcast" and "listen"
-- **G.** we support "optional" side-chains off the side of a device's feed.
-
+Core design decisions we add for Tiny-SSB:
+- **E.** each main-chain message must fit in a LoRa packet
+- **F.** we support optional side-chains off messages such that a message's
+ content can be of arbitrary length; side-chain packets have the same length
+ as main-chain packets.
+- **G.** we introduce a simple replication protocol that does not require
+  two peers to establish a connection (e.g. TCP)
 
 These decisions enable the following properties/ behaviors:
 - **reliable "gossip"**: you can receive news from peerA "via peerB" and
@@ -46,20 +48,25 @@ These decisions enable the following properties/ behaviors:
   references to messages are "backlinks" (point *backwards* in time).
 - **new transports**: with LoRa as the benchmark tinySSB can access extremely
   long-distance (~10km), low energy (solar) communication, as well as
-  pocket-to-pocket communication with Bluetooth Low-energy.
+  pocket-to-pocket communication with pairing-free Bluetooth Low Energy.
+
+An applications running on a device can write messages to the device's feed,
+and read all other feeds that have been replicated to this device. Other
+than that, applications cannot talk to each other directly.
 
 <details>
     <summary>More implications... (click to expand)</summary>
 
 - you can publish to your own feed anytime... you are your own source of
+  truth
 - there is no password reset
     - if you lose your device / the signing keys, there is no recovering them
-- your "database" is only a local, subjective snapshot based on what you've
-  replicated
+- your "database" of replicated feeds is only a local, subjective snapshot
+  based on what you've replicated
     - you will never have all the feeds (islands are ok!)
     - expect partitions / concurrency/ lags
     - expect eventual consistency
-- there is no guarenteed ordering of messages
+- there is no guarenteed ordering of messages in some global time
     - there is no central physical (or logical) machine that is "authoring",
       just many parallel peers.
     - the best you can do is "causal ordering" + an algorithm for tie-breaking
@@ -73,12 +80,251 @@ These decisions enable the following properties/ behaviors:
       then you can break the "linear linked-list" expectation of your feed and
       you break replication
 - multiple identities per device is easy
-    - just add another signing key-pair
+    - just add another signing key-pair for a new, independent feed
 
 </details>
 
+
 ## 2. High-level Overview
 
+In tinySSB we separate the core data structure (called feed) from the
+several ways of replicating a feed to other devices. In this section
+we elaborate in more details on feeds before we show tinySSB's
+packet format and its special header field called 'DMX'. Replication
+is then covered in the subsequent section.
+
+### 2.1 Feed Structure and Concepts
+
+A feed in tinySSB is an append-only log of signed messages created by a single
+device. Each feed is identified by a unique cryptographic signing key-pair, with
+the public key serving as the feed's identifier (Feed ID or FID). This design is
+inherited from the original Secure Scuttlebutt (SSB) protocol but adapted for
+constrained environments.
+
+Key properties of tinySSB feeds:
+
+- **Append-only**: New messages can only be added to the end of a feed;
+  existing messages cannot be modified or deleted.
+- **Linked-list structure**: Each message contains a reference to the previous
+  message in the feed, forming a linear chain.
+- **Cryptographically signed**: Every message is signed by the feed's
+  private key, ensuring authenticity and integrity.
+- **Immutable**: Once published, messages cannot be changed without
+  invalidating the chain.
+- **Size-constrained**: All messages must fit within the 120-byte
+
+#### Feed Identity
+
+Each feed is uniquely identified by a 32-byte ed25519 public key (Feed ID). The
+corresponding private key is used to sign all messages published to that feed.
+This cryptographic identity ensures that:
+
+1. Messages can be verified as authentic (created by the claimed author)
+2. Messages cannot be tampered with without detection
+3. Feeds from different devices remain distinct and independently verifiable
+
+#### Feed Structure
+
+A feed consists of a sequence of messages, each with a unique sequence number
+starting from 1. Each message references the previous message's ID, creating a
+linked list:
+
+```
+Feed
+┃
+┣━━ Message 1 (sequence=1, prev=FID)
+┃
+┣━━ Message 2 (sequence=2, prev=msg_id_1)
+┃
+┣━━ Message 3 (sequence=3, prev=msg_id_2)
+┃
+┗━━ ...
+```
+
+This linked structure ensures that:
+
+1. The integrity of the entire feed can be verified
+2. We can succinctly communicate how many messages from a feed with
+   have (the sequence)
+
+
+### 2.2 General Packet Structure and 'shadow fields'
+
+A main-chain packet consists of the following fields concatenated in order:
+
+```
+  |<---------------------------- 120 bytes ------------------------------>|
+
+  ┌──────────┬─────────────┬───────────────────────┬──────────────────────┐
+  │ DMX      │ Message Type│ Content               │ Signature            │
+  │ (7 bytes)│ (1 byte)    │ (48 bytes)            │ (64 bytes)           │
+  └──────────┴─────────────┴───────────────────────┴──────────────────────┘
+```
+
+Where:
+- **DMX**: 7-byte header calculated as described below
+- **Message Type**: 1-byte type identifier
+- **Content**: 48 bytes of payload data (format depends on packet type)
+- **Signature**: 64-byte ed25519 signature
+
+The total size of a main chain packet is exactly 120 bytes.
+
+#### Shadow Fields
+
+As is visible in above packet layout, there are no fields for
+- the feedID, nor
+- this message's sequence number, nor
+- the "previous message's ID".
+These fields have been factored out for optimization reasons as a
+receiving node knows their values or can compute them once a packet
+has been received.  In other words, these three fields are
+implicit. We also call these fields 'shadow fields' as they belong to
+a packet and follwo it but they are not "expressed on the wire".
+
+```
+  |<---------------------------- 120 bytes ------------------------------>|
+
+  ..................................................................
+  | version (fixed len) | FID (32B) | SeqNr (4B) | PrevMsgID (20B) |  shadow
+  ..................................................................
+  ┌──────────┬─────────────┬───────────────────────┬──────────────────────┐
+  │ DMX      │ Message Type│ Content               │ Signature            │
+  │ (7 bytes)│ (1 byte)    │ (48 bytes)            │ (64 bytes)           │
+  └──────────┴─────────────┴───────────────────────┴──────────────────────┘
+```
+
+For example, let's assume that a peer already possesses for feed F the
+message M that has the (implicit) sequence number S and (implicit) message
+ID I. Now the subsequent message M' is received as a sequence of
+120 bytes from which the receiver can create a full message that includes the
+shadow fields as follows: F is the same, S' is S incremented by 1,
+the 'previous message ID' is just I. From this, using a special procedure
+explained below, the bytes of the full message become available and
+the receiver can compute the new message ID I'.
+
+
+### 2.3 DMX Header Mechanism
+
+While the shadow fields help to bring down a tinSSB packet to 120B (by
+not including them in the packet's wire bytes), this creates the problem
+that from the wire bytes along it is not possible to find out to which feed
+a packet belongs.
+
+A new header field called DMX (DeMultipleX) is a critical innovation
+in tinySSB that allows for efficient packet identification without
+requiring the full feed ID, sequence number, and previous message ID
+to be included in each packet. It works by being a predictable value:
+based on the previous message's fields, the DMX value of the packet
+for the subsequent message can be computed.  The received thus can now
+what DMX value to expect.
+
+
+#### 2.3.1 Purpose of DMX
+
+The DMX header serves multiple purposes:
+
+1. **Compact identification**: Reduces the space needed to identify a packet's
+position in a feed
+2. **Predictable linking**: Allows peers to calculate the expected DMX for the
+next message in a feed
+3. **Efficient filtering**: Enables quick determination of whether a received
+packet belongs to a feed of interest
+
+#### 2.3.2 DMX Calculation
+
+The DMX header is defined as the first 7 bytes of the SHA256 hash of the
+following data concatenated in order:
+
+| Name               | Bytes   | Description                                                                       |
+| :----------------- | :------ | :-------------------------------------------------------------------------------- |
+| `dmx_prefix`       | 10      | Protocol version identifier (default: `tinyssb-v0`)                               |
+| `feed_id`          | 32      | ed25519 public key of the feed                                                    |
+| `sequence`         | 4       | Sequence number of this packet in the feed, in big-endian format                  |
+| `prev_message_id`  | 20      | ID of the previous message in this feed                                           |
+
+```
+dmx_material = dmx_prefix + feed_id + sequence + prev_message_id
+dmx = sha256(dmx_material).slice(0, 7)
+```
+Where `+` denotes concatenation.
+
+#### 2.3.3 DMX Usage
+
+When a peer has message N of a feed, it can calculate the expected DMX for
+message N+1. When receiving packets on a broadcast channel (to which many
+peers may send packets), the peer can quickly check if any packet matches
+this expected DMX, indicating it's the next message in a feed of interest.
+The second verification step consists in reconstructing the full message
+(including the shadow headers) and verifying the cryptographic signature.
+This prevents accepting packets that share the same DMX value by chance.
+
+#### 2.4 Message ID Calculation
+
+Each message in a feed has a unique message ID (`msg_id`) that is used for
+referencing in subsequent messages. Using the shadow fields, the `msg_id` is
+calculated as:
+
+```
+msg_id_material = dmx_prefix + feed_id + sequence + prev_message_id + dmx +
+                  message_type + content + signature
+msg_id = sha256(msg_id_material).slice(0, 20)
+```
+
+Important notes:
+- The `msg_id` is 20 bytes long
+- For the first message in a feed (`sequence` = 1), the `prev_message_id` is
+  the the first 20 bytes of the feed ID
+- `message_type` is described in section 4.3
+
+### 2.5 Main-Chain Packet Format
+
+All main-chain packets in tinySSB share a common structure, regardless of their
+specific type. This consistent format ensures that packets can be properly
+identified, verified, and processed.
+
+#### 4.3.2 Signature Generation
+
+The signature is an ed25519 signature of the concatenation of the following data:
+
+| Name                | Description                                              |
+| :------------------ | :------------------------------------------------------- |
+| `dmx_prefix`        | Protocol version identifier (default: `tinyssb-v0`)      |
+| `feed_id`           | 32-byte public key of the feed                           |
+| `sequence`          | Sequence number of this packet in the feed               |
+| `prev_message_id`   | 20-byte ID of the previous message in this feed          |
+| `dmx`               | 7-byte DMX header                                        |
+| `message_type`       | 1-byte type identifier                                   |
+| `content`           | 48-byte content payload                                  |
+
+```
+signing_material = dmx_prefix + feed_id + sequence + prev_message_id +
+                   dmx + message_type + content
+signature = sign(signing_material, signing_key)
+```
+
+#### 2.5.1 Message Type Byte
+
+The packet type byte determines how the content field should be interpreted:
+
+| Code | Meaning                                                |
+| :--- | :----------------------------------------------------- |
+| 0    | Fixed-size content (fits entirely within the 48 bytes) |
+| 1    | Variable-size content (may use side chains)            |
+
+Additional packet types may be defined in future versions of the protocol.
+
+See Section 5 for more information about each type.
+
+### 2.6 Feed Limitations and Considerations
+
+#### 2.6.1 Security Considerations
+
+1. **Key management**: Loss of a feed's private key means permanent loss of the
+ability to publish to that feed
+2. **No feed deletion**: Once published, messages cannot be deleted from the
+network
+3. **Feed forking**: If the same private key is used on multiple devices, feed
+forking can occur, breaking the linear structure
 
 
 ## 3. Replication
@@ -89,7 +335,7 @@ The primary goal of replication in tinySSB is to efficiently coordinate the
 exchange of messages between peers in a resource-constrained environment, while
 ensuring that messages are delivered without being modified by peers within the
 network. Specifically, tinySSB is designed to work over transports like LoRa,
-which imposes strict limitations on packet size and bandwidth.
+which come with severe limitations on packet size and bandwidth.
 
 Key constraints that shape the replication protocol:
 - **Packet size limitation**: All packets must fit within 120 bytes (LoRa has
@@ -383,193 +629,6 @@ different peers may have different views of the network at any given moment.
 
 ## 4. Feeds
 
-### 4.1 Feed Structure and Concepts
-
-A feed in tinySSB is an append-only log of signed messages created by a single
-device. Each feed is identified by a unique cryptographic signing key-pair, with
-the public key serving as the feed's identifier (Feed ID or FID). This design is
-inherited from the original Secure Scuttlebutt (SSB) protocol but adapted for
-constrained environments.
-
-Key properties of tinySSB feeds:
-
-- **Append-only**: New messages can only be added to the end of a feed; existing
-messages cannot be modified or deleted.  - **Linked-list structure**: Each
-message contains a reference to the previous message in the feed, forming a
-linear chain.  - **Cryptographically signed**: Every message is signed by the
-feed's private key, ensuring authenticity and integrity.  - **Immutable**: Once
-published, messages cannot be changed without invalidating the chain.  -
-**Size-constrained**: All messages must fit within the 120-byte limit imposed by
-LoRa.
-
-#### Feed Identity
-
-Each feed is uniquely identified by a 32-byte ed25519 public key (Feed ID). The
-corresponding private key is used to sign all messages published to that feed.
-This cryptographic identity ensures that:
-
-1. Messages can be verified as authentic (created by the claimed author) 2.
-Messages cannot be tampered with without detection 3. Feeds from different
-devices remain distinct and independently verifiable
-
-#### Feed Structure
-
-A feed consists of a sequence of messages, each with a unique sequence number
-starting from 1. Each message references the previous message's ID, creating a
-linked list:
-
-```
-Feed
-┃
-┣━━ Message 1 (sequence=1, prev=0000..00)
-┃
-┣━━ Message 2 (sequence=2, prev=msg_id_1)
-┃
-┣━━ Message 3 (sequence=3, prev=msg_id_2)
-┃
-┗━━ ...
-```
-
-This linked structure ensures that:
-
-1. The integrity of the entire feed can be verified
-2. We can succinctly communicate how many messages from a feed with have (the
-sequence)
-
-### 4.2 DMX Header Mechanism
-
-The DMX (DeMultipleX) header is a critical innovation in tinySSB that allows for
-efficient packet identification without requiring the full feed ID, sequence
-number, and previous message ID to be included in each packet. This saves
-valuable space in the constrained 120-byte packet size.
-
-#### 4.2.1 Purpose of DMX
-
-The DMX header serves multiple purposes:
-
-1. **Compact identification**: Reduces the space needed to identify a packet's
-position in a feed
-2. **Predictable linking**: Allows peers to calculate the expected DMX for the
-next message in a feed
-3. **Efficient filtering**: Enables quick determination of whether a received
-packet belongs to a feed of interest
-
-#### 4.2.2 DMX Calculation
-
-The DMX is defined as the first 7 bytes of the SHA256 hash of the following data
-concatenated in order:
-
-| Name               | Bytes   | Description                                                                       |
-| :----------------- | :------ | :-------------------------------------------------------------------------------- |
-| `dmx_prefix`       | 10      | Protocol version identifier (default: `tinyssb-v0`)                               |
-| `feed_id`          | 32      | ed25519 public key of the feed                                                    |
-| `sequence`         | 4       | Sequence number of this packet in the feed, in big-endian format                  |
-| `prev_message_id`  | 20      | ID of the previous message in this feed                                           |
-
-```
-dmx_material = dmx_prefix + feed_id + sequence + prev_message_id
-dmx = sha256(dmx_material).slice(0, 7)
-```
-Where `+` denotes concatenation.
-
-#### 4.2.3 DMX Usage
-
-When a peer has message N of a feed, it can calculate the expected DMX for
-message N+1. When receiving broadcast packets, the peer can quickly check if any
-packet matches this expected DMX, indicating it's the next message in a feed of
-interest.
-
-This mechanism is particularly valuable in broadcast-only environments where
-peers need to efficiently filter relevant packets from the broadcast medium.
-
-#### 4.2.4 Message ID Calculation
-
-Each message in a feed has a unique message ID (`msg_id`) that is used for
-referencing in subsequent messages. The `msg_id` is calculated as:
-
-```
-msg_id_material = dmx_prefix + feed_id + sequence + prev_message_id + dmx +
-                  message_type + content + signature
-msg_id = sha256(msg_id_material).slice(0, 20)
-```
-
-Important notes:
-- The `msg_id` is 20 bytes long
-- For the first message in a feed (`sequence` = 1), the `prev_message_id` is all
-zeros (20 bytes)
-- `message_type` is described in section 4.3
-
-### 4.3 Main Chain Packet Format
-
-All main chain packets in tinySSB share a common structure, regardless of their
-specific type. This consistent format ensures that packets can be properly
-identified, verified, and processed.
-
-#### 4.3.1 General Packet Structure
-
-A main chain packet consists of the following components concatenated in order:
-
-```
-  |<---------------------------- 120 bytes ------------------------------>|
-
-  ┌──────────┬─────────────┬───────────────────────┬──────────────────────┐
-  │ DMX      │ Message Type│ Content               │ Signature            │
-  │ (7 bytes)│ (1 byte)    │ (48 bytes)            │ (64 bytes)           │
-  └──────────┴─────────────┴───────────────────────┴──────────────────────┘
-```
-
-Where:
-- **DMX**: 7-byte header calculated as described in section 4.2
-- **Message Type**: 1-byte type identifier
-- **Content**: 48 bytes of payload data (format depends on packet type)
-- **Signature**: 64-byte ed25519 signature
-
-The total size of a main chain packet is exactly 120 bytes, which is the maximum
-size allowed by the LoRa transport.
-
-#### 4.3.2 Signature Generation
-
-The signature is an ed25519 signature of the concatenation of the following data:
-
-| Name                | Description                                              |
-| :------------------ | :------------------------------------------------------- |
-| `dmx_prefix`        | Protocol version identifier (default: `tinyssb-v0`)      |
-| `feed_id`           | 32-byte public key of the feed                           |
-| `sequence`          | Sequence number of this packet in the feed               |
-| `prev_message_id`   | 20-byte ID of the previous message in this feed          |
-| `dmx`               | 7-byte DMX header                                        |
-| `message_type`       | 1-byte type identifier                                   |
-| `content`           | 48-byte content payload                                  |
-
-```
-signing_material = dmx_prefix + feed_id + sequence + prev_message_id +
-                   dmx + message_type + content
-signature = sign(signing_material, signing_key)
-```
-
-#### 4.3.3 Message Type Byte
-
-The packet type byte determines how the content field should be interpreted:
-
-| Code | Meaning                                                |
-| :--- | :----------------------------------------------------- |
-| 0    | Fixed-size content (fits entirely within the 48 bytes) |
-| 1    | Variable-size content (may use side chains)            |
-
-Additional packet types may be defined in future versions of the protocol.
-
-See Section 5 for more information about each type.
-
-### 4.4 Feed Limitations and Considerations
-
-#### 4.4.1 Security Considerations
-
-1. **Key management**: Loss of a feed's private key means permanent loss of the
-ability to publish to that feed
-2. **No feed deletion**: Once published, messages cannot be deleted from the
-network
-3. **Feed forking**: If the same private key is used on multiple devices, feed
-forking can occur, breaking the linear structure
 
 #### 4.4.2 Performance Considerations
 
