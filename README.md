@@ -175,18 +175,23 @@ As is visible in above packet layout, there are no fields for
 - the feedID, nor
 - this message's sequence number, nor
 - the "previous message's ID".
+
 These fields have been factored out for optimization reasons as a
 receiving node knows their values or can compute them once a packet
 has been received.  In other words, these three fields are
 implicit. We also call these fields 'shadow fields' as they belong to
-a packet and follwo it but they are not "expressed on the wire".
+a packet and follow it but they are not "expressed on the wire".
+The following diagram shows a packet's shadow fields.
 
 ```
   |<---------------------------- 120 bytes ------------------------------>|
 
-  ..................................................................
-  | version (fixed len) | FID (32B) | SeqNr (4B) | PrevMsgID (20B) |  shadow
-  ..................................................................
+  shadow:
+  .................................................................................
+  | version (fixed len) | FID (32 bytes) | SeqNr (4 bytes) | PrevMsgID (20 bytes) |
+  .................................................................................
+
+  wire bytes:
   ┌──────────┬─────────────┬───────────────────────┬──────────────────────┐
   │ DMX      │ Message Type│ Content               │ Signature            │
   │ (7 bytes)│ (1 byte)    │ (48 bytes)            │ (64 bytes)           │
@@ -207,7 +212,7 @@ the receiver can compute the new message ID I'.
 
 While the shadow fields help to bring down a tinSSB packet to 120B (by
 not including them in the packet's wire bytes), this creates the problem
-that from the wire bytes along it is not possible to find out to which feed
+that from the wire bytes alone it is not possible to find out to which feed
 a packet belongs.
 
 A new header field called DMX (DeMultipleX) is a critical innovation
@@ -215,7 +220,7 @@ in tinySSB that allows for efficient packet identification without
 requiring the full feed ID, sequence number, and previous message ID
 to be included in each packet. It works by being a predictable value:
 based on the previous message's fields, the DMX value of the packet
-for the subsequent message can be computed.  The received thus can now
+for the subsequent message can be computed.  The received thus can know
 what DMX value to expect.
 
 
@@ -229,6 +234,10 @@ position in a feed
 next message in a feed
 3. **Efficient filtering**: Enables quick determination of whether a received
 packet belongs to a feed of interest
+4. **Protocol versioning**: a new version of tinySSB's packet format can
+easily be introduced by changing the 'dmx_prefix' field (see below). Packets
+having different format or semantics can be exchanged on the same medium without
+additional precaution.
 
 #### 2.3.2 DMX Calculation
 
@@ -250,13 +259,14 @@ Where `+` denotes concatenation.
 
 #### 2.3.3 DMX Usage
 
-When a peer has message N of a feed, it can calculate the expected DMX for
-message N+1. When receiving packets on a broadcast channel (to which many
-peers may send packets), the peer can quickly check if any packet matches
-this expected DMX, indicating it's the next message in a feed of interest.
-The second verification step consists in reconstructing the full message
-(including the shadow headers) and verifying the cryptographic signature.
-This prevents accepting packets that share the same DMX value by chance.
+When a peer has message with sequence number S of a feed, it can
+calculate the expected DMX for message S+1. When receiving packets on
+a broadcast channel (to which many peers may send packets), the peer
+can quickly check if any packet matches this expected DMX, indicating
+it's the next message in a feed of interest.  The second verification
+step consists in reconstructing the full message (including the shadow
+headers) and verifying the cryptographic signature.  This prevents
+accepting packets that share the same DMX value by chance.
 
 #### 2.4 Message ID Calculation
 
@@ -272,9 +282,10 @@ msg_id = sha256(msg_id_material).slice(0, 20)
 
 Important notes:
 - The `msg_id` is 20 bytes long
+- The `sequence` value is encoded in big-endian network order inside 4 bytes
 - For the first message in a feed (`sequence` = 1), the `prev_message_id` is
-  the the first 20 bytes of the feed ID
-- `message_type` is described in section 4.3
+  the first 20 bytes of the feed ID
+- `message_type` is described in section 2.5.2
 
 ### 2.5 Main-Chain Packet Format
 
@@ -282,7 +293,7 @@ All main-chain packets in tinySSB share a common structure, regardless of their
 specific type. This consistent format ensures that packets can be properly
 identified, verified, and processed.
 
-#### 4.3.2 Signature Generation
+#### 2.5.1 Signature Generation
 
 The signature is an ed25519 signature of the concatenation of the following data:
 
@@ -302,7 +313,7 @@ signing_material = dmx_prefix + feed_id + sequence + prev_message_id +
 signature = sign(signing_material, signing_key)
 ```
 
-#### 2.5.1 Message Type Byte
+#### 2.5.2 Message Type Byte
 
 The packet type byte determines how the content field should be interpreted:
 
