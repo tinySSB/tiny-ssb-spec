@@ -14,24 +14,25 @@ Tiny-SSB was born of the question "Could we make [Secure
 Scuttelbutt](https://github.com/ssbc) (SSB) **tiny** enough to work over
 [LoRa](https://en.wikipedia.org/wiki/LoRa)?"
 
-Core design decisions we copy from SSB:
-- **A.** each device has a unique cryptographic key-pair for signing and encryption
-- **B.** each "message" published by a device is signed by that device's
+Core design decisions we _copy_ from SSB:
+- **A)** each device has a unique cryptographic key-pair for signing and encryption
+- **B)** each "message" published by a device is signed by that device's
   cryptographic key
-- **C.** each message has a unique ID which can be derived from it's header +
+- **C)** each message has a unique ID which can be derived from it's header +
   content (`msg_id`)
-- **D.** each message published by a device references the msg_id of last message
+- **D)** each message published by a device references the msg_id of last message
   that device published, such that all messages can be arranged as a linear
   linked-list. This data structure is known as `feed` and is some-times
   referred to as 'main-chain' in this document.
 
-Core design decisions we add for Tiny-SSB:
-- **E.** each main-chain message must fit in a LoRa packet
-- **F.** we support optional side-chains off messages such that a message's
+Core design decisions we _add_ for Tiny-SSB:
+- **E)** each main-chain message must fit in a LoRa packet
+- **F)** we support optional side-chains off messages such that a message's
  content can be of arbitrary length; side-chain packets have the same length
  as main-chain packets.
-- **G.** we introduce a simple replication protocol that does not require
-  two peers to establish a connection (e.g. TCP)
+- **G)** we introduce a simple replication protocol that does not require
+  two peers to establish a connection (e.g. TCP) and also works in a
+  broadcast setting.
 
 These decisions enable the following properties/ behaviors:
 - **reliable "gossip"**: you can receive news from peerA "via peerB" and
@@ -50,7 +51,7 @@ These decisions enable the following properties/ behaviors:
   long-distance (~10km), low energy (solar) communication, as well as
   pocket-to-pocket communication with pairing-free Bluetooth Low Energy.
 
-An applications running on a device can write messages to the device's feed,
+An application running on a device can write messages to the device's feed,
 and read all other feeds that have been replicated to this device. Other
 than that, applications cannot talk to each other directly.
 
@@ -64,14 +65,16 @@ than that, applications cannot talk to each other directly.
 - your "database" of replicated feeds is only a local, subjective snapshot
   based on what you've replicated
     - you will never have all the feeds (islands are ok!)
-    - expect partitions / concurrency/ lags
+    - expect partitions / concurrency / lags
     - expect eventual consistency
 - there is no guarenteed ordering of messages in some global time
     - there is no central physical (or logical) machine that is "authoring",
       just many parallel peers.
-    - the best you can do is "causal ordering" + an algorithm for tie-breaking
-    - "timestamps" can work but any malicious device or device with a broken
-      clock will wreck your system.
+    - while each peer's log entries are sequential, there is no global
+      ordering among entries of several peers: the best you can do is
+      "causal ordering" + an algorithm for tie-breaking
+    - "timestamps" (referring to some real-world clock values) can work but any
+      malicious device or device with a broken clock will wreck your system.
 - "multi-device" identity is currently unsolved
     - i.e. people often want to be the same "author" on their phone AND laptop,
       such that people can @-mention, or DM with just one ID, but this is
@@ -96,7 +99,8 @@ is then covered in the subsequent section.
 ### 2.1 Feed Structure and Concepts
 
 A feed in tinySSB is an append-only log of signed messages created by a single
-device. Each feed is identified by a unique cryptographic signing key-pair, with
+device. This is sometimes also called a sig-chain.
+Each feed is identified by a unique cryptographic signing key-pair, with
 the public key serving as the feed's identifier (Feed ID or FID). This design is
 inherited from the original Secure Scuttlebutt (SSB) protocol but adapted for
 constrained environments.
@@ -111,7 +115,7 @@ Key properties of tinySSB feeds:
   private key, ensuring authenticity and integrity.
 - **Immutable**: Once published, messages cannot be changed without
   invalidating the chain.
-- **Size-constrained**: All messages must fit within the 120-byte
+- **Size-constrained**: All messages must fit within 120 Bytes.
 
 #### Feed Identity
 
@@ -132,11 +136,11 @@ linked list:
 ```
 Feed
 ┃
-┣━━ Message 1 (sequence=1, prev=FID)
+┣━━ Message 1 (sequence=1, prev=FID, content, signature)
 ┃
-┣━━ Message 2 (sequence=2, prev=msg_id_1)
+┣━━ Message 2 (sequence=2, prev=msg_id_1, content, signature)
 ┃
-┣━━ Message 3 (sequence=3, prev=msg_id_2)
+┣━━ Message 3 (sequence=3, prev=msg_id_2, content, signature)
 ┃
 ┗━━ ...
 ```
@@ -163,11 +167,11 @@ A main-chain packet consists of the following fields concatenated in order:
 
 Where:
 - **DMX**: 7-byte header calculated as described below
-- **Message Type**: 1-byte type identifier
-- **Content**: 48 bytes of payload data (format depends on packet type)
+- **Message Type**: 1-byte message type identifier
+- **Content**: 48 bytes of payload data (format depends on message type)
 - **Signature**: 64-byte ed25519 signature
 
-The total size of a main chain packet is exactly 120 bytes.
+The total size of a main-chain packet is exactly 120 bytes.
 
 #### Shadow Fields
 
@@ -179,8 +183,8 @@ As is visible in above packet layout, there are no fields for
 These fields have been factored out for optimization reasons as a
 receiving node knows their values or can compute them once a packet
 has been received.  In other words, these three fields are
-implicit. We also call these fields 'shadow fields' as they belong to
-a packet and follow it but they are not "expressed on the wire".
+_implicit_. We also call these fields **'shadow fields'** as they belong
+to a packet and follow it but they are not "expressed on the wire".
 The following diagram shows a packet's shadow fields.
 
 ```
@@ -220,7 +224,7 @@ in tinySSB that allows for efficient packet identification without
 requiring the full feed ID, sequence number, and previous message ID
 to be included in each packet. It works by being a predictable value:
 based on the previous message's fields, the DMX value of the packet
-for the subsequent message can be computed.  The received thus can know
+for the subsequent message can be computed.  The receiver thus can know
 what DMX value to expect.
 
 
@@ -228,16 +232,18 @@ what DMX value to expect.
 
 The DMX header serves multiple purposes:
 
-1. **Compact identification**: Reduces the space needed to identify a packet's
-position in a feed
+1. **Compact identification**: Reduces the space needed to identify (subsequent) packets
 2. **Predictable linking**: Allows peers to calculate the expected DMX for the
 next message in a feed
 3. **Efficient filtering**: Enables quick determination of whether a received
 packet belongs to a feed of interest
 4. **Protocol versioning**: a new version of tinySSB's packet format can
-easily be introduced by changing the 'dmx_prefix' field (see below). Packets
-having different format or semantics can be exchanged on the same medium without
-additional precaution.
+easily be introduced by changing the 'dmx_prefix' field (see below). Such
+packets can co-exist with packets formed according to other version numbers
+i.e., packets having different format or semantics can be exchanged on the
+same medium without additional precaution. This works because typically only
+a small number (hundreds) of packets are outstanding between two peers, hence
+DMX values must not be universally unique.
 
 #### 2.3.2 DMX Calculation
 
@@ -255,7 +261,7 @@ following data concatenated in order:
 dmx_material = dmx_prefix + feed_id + sequence + prev_message_id
 dmx = sha256(dmx_material).slice(0, 7)
 ```
-Where `+` denotes concatenation.
+where `+` denotes concatenation.
 
 #### 2.3.3 DMX Usage
 
@@ -265,14 +271,14 @@ a broadcast channel (to which many peers may send packets), the peer
 can quickly check if any packet matches this expected DMX, indicating
 it's the next message in a feed of interest.  The second verification
 step consists in reconstructing the full message (including the shadow
-headers) and verifying the cryptographic signature.  This prevents
-accepting packets that share the same DMX value by chance.
+headers) and verifying the cryptographic signature.  This second step
+prevents accepting packets that share the same DMX value by chance.
 
 #### 2.4 Message ID Calculation
 
 Each message in a feed has a unique message ID (`msg_id`) that is used for
 referencing in subsequent messages. Using the shadow fields, the `msg_id` is
-calculated as:
+calculated as the first 20 bytes of the SHA256 hash, as follows:
 
 ```
 msg_id_material = dmx_prefix + feed_id + sequence + prev_message_id + dmx +
@@ -284,7 +290,7 @@ Important notes:
 - The `msg_id` is 20 bytes long
 - The `sequence` value is encoded in big-endian network order inside 4 bytes
 - For the first message in a feed (`sequence` = 1), the `prev_message_id` is
-  the first 20 bytes of the feed ID
+  the first 20 bytes of the feed ID and acts as a self-signed root certificate
 - `message_type` is described in section 2.5.2
 
 ### 2.5 Main-Chain Packet Format
@@ -295,7 +301,8 @@ identified, verified, and processed.
 
 #### 2.5.1 Signature Generation
 
-The signature is an ed25519 signature of the concatenation of the following data:
+The signature used for tinySSB main-chan packets is an ed25519 signature
+of the concatenation of the following data:
 
 | Name                | Description                                              |
 | :------------------ | :------------------------------------------------------- |
@@ -313,9 +320,13 @@ signing_material = dmx_prefix + feed_id + sequence + prev_message_id +
 signature = sign(signing_material, signing_key)
 ```
 
+Note that ed25519 signatures are 64 Bytes long.
+
+
 #### 2.5.2 Message Type Byte
 
-The packet type byte determines how the content field should be interpreted:
+The packet type byte determines how the content field of a main-chain
+packet should be interpreted:
 
 | Code | Meaning                                                |
 | :--- | :----------------------------------------------------- |
@@ -324,7 +335,10 @@ The packet type byte determines how the content field should be interpreted:
 
 Additional packet types may be defined in future versions of the protocol.
 
-See Section 5 for more information about each type.
+See Section 5 for more information about each type. The
+replication protocol for main-chain packets is explained in
+Section 3.4, while the replication protocol for side-chain packets
+is explained in Section 5.3
 
 ### 2.6 Feed Limitations and Considerations
 
@@ -737,7 +751,7 @@ to listen for its arrival
 
 ---
 
-### 5.2 Type 1 - Variable Sized Messages
+### 5.2 Type 1 - Variable Sized Messages Using Side-Chain Packets
 
 Type 1 messages are designed for content that may exceed the 48-byte limit of a
 main chain packet. They use a special format for the content field that may
@@ -906,13 +920,14 @@ This construction ensures that:
 2. Side chain packets can be identified and linked correctly
 3. The end of the side chain can be detected
 
-#### 5.2.6 CHNK Packet Protocol
+### 5.3 CHNK Packet Protocol for Side-Chain Packets
 
-The CHNK Packet protocol is used to coordinate the replication of side chain
-packets between peers. It is similar to the WANT vector protocol used for main
-chain packets but specifically designed for requesting side chain chunks.
+The CHNK Packet protocol is used to coordinate the replication of side-chain
+packets between peers. It is similar to the WANT vector protocol used for
+main-chain packets but specifically designed for requesting individual
+side-chain chunks.
 
-##### CHNK DMX Calculation
+#### 5.3.1 CHNK DMX Calculation
 
 The DMX for CHNK packets is calculated as:
 
@@ -927,7 +942,7 @@ CHNK_DMX := first 7 bytes of SHA256(CHNK_PREFIX | CHNK_STR | GOSET_state)
 This dynamic DMX calculation ensures that CHNK packets are only processed by
 peers who share the same GOSET state.
 
-##### CHNK Packet Format
+#### 5.3.2 CHNK Packet Format
 
 ```
   |<----------------120 bytes max---------------->|
@@ -943,7 +958,7 @@ Where:
 - **payload**: BIPF-encoded array of triplets specifying needed chunks
 - **padding**: Zeros added to bring the packet size up to 120 bytes
 
-##### CHNK Payload Structure
+#### 5.3.3 CHNK Payload Structure
 
 The payload of a CHNK vector is a BIPF-encoded array of triplets:
 
@@ -960,7 +975,7 @@ For example, a decoded payload of `[(3, 42, 2), (5, 17, 1)]` would mean:
 - I need chunk 2 of message 42 from the feed at GOSET index 3
 - I need chunk 1 of message 17 from the feed at GOSET index 5
 
-##### CHNK Exchange Process
+#### 5.3.4 CHNK Exchange Process
 
 The CHNK vector exchange process follows these steps:
 
